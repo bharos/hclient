@@ -70,7 +70,7 @@ public final class HMSClient implements AutoCloseable {
   private static final String HIVE_SITE = "hive-site.xml";
   private static final String CORE_SITE = "core-site.xml";
   private static final String PRINCIPAL_KEY = "hive.metastore.kerberos.principal";
-  private static final long SOCKET_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(600);
+  private static final long SOCKET_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(9000000);
 
   private final String confDir;
   private ThriftHiveMetastore.Iface client;
