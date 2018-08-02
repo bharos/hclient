@@ -20,6 +20,8 @@ package org.apache.hadoop.hive.metastore.tools;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Micro-benchmark some piece of code.<p>
@@ -43,6 +45,7 @@ public class MicroBenchmark {
   private final int warmup;
   private final int iterations;
   private final int scaleFactor;
+  private static final Logger LOG = LoggerFactory.getLogger(MicroBenchmark.class);
 
   /**
    * Create default micro benchmark measurer
@@ -86,6 +89,7 @@ public class MicroBenchmark {
                                        @Nullable Runnable post) {
     // Warmup phase
     for (int i = 0; i < warmup; i++) {
+      LOG.info("Warmup phase : Iteration "+i);
       if (pre != null) {
         pre.run();
       }
@@ -97,6 +101,7 @@ public class MicroBenchmark {
     // Run the benchmark
     DescriptiveStatistics stats = new DescriptiveStatistics();
     for (int i = 0; i < iterations; i++) {
+      LOG.info("Benchmark phase : Iteration "+i);
       if (pre != null) {
         pre.run();
       }

@@ -165,6 +165,8 @@ public class BenchmarkTool implements Runnable {
         .add("dropTableWithPartitions",
             () -> benchmarkDeleteWithPartitions(bench, bData, 1, nParameters))
         .add("addPartition", () -> benchmarkCreatePartition(bench, bData))
+        .add("alterPartitions", () -> benchmarkAlterPartitions(bench, bData, 1, nParameters))
+        .add("caad", () -> benchmarkCAAD(bench, bData, 1, nParameters))
         .add("dropPartition", () -> benchmarkDropPartition(bench, bData))
         .add("listPartition", () -> benchmarkListPartition(bench, bData))
         .add("getPartition",
@@ -183,6 +185,10 @@ public class BenchmarkTool implements Runnable {
           () -> benchmarkListTables(bench, bData, howMany))
           .add("dropTableWithPartitions" + '.' + howMany,
               () -> benchmarkDeleteWithPartitions(bench, bData, howMany, nParameters))
+          .add("alterPartitions"+ '.' + howMany,
+              () -> benchmarkAlterPartitions(bench, bData, howMany, nParameters))
+          .add("caad"+ '.' + howMany,
+              () -> benchmarkCAAD(bench, bData, howMany, nParameters))
           .add("listPartitions" + '.' + howMany,
               () -> benchmarkListManyPartitions(bench, bData, howMany))
           .add("getPartitions" + '.' + howMany,

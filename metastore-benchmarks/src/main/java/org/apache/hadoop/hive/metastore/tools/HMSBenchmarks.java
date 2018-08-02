@@ -19,9 +19,11 @@
 package org.apache.hadoop.hive.metastore.tools;
 
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
+import org.apache.hadoop.hdfs.server.common.Storage;
 import org.apache.hadoop.hive.metastore.TableType;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.metastore.api.Partition;
+import org.apache.hadoop.hive.metastore.api.StorageDescriptor;
 import org.apache.hadoop.hive.metastore.api.Table;
 import org.apache.thrift.TException;
 import org.jetbrains.annotations.NotNull;
@@ -242,6 +244,88 @@ final class HMSBenchmarks {
     } finally {
       throwingSupplierWrapper(() -> client.dropTable(dbName, tableName));
     }
+  }
+  static DescriptiveStatistics benchmarkCAAD(@NotNull MicroBenchmark bench,
+      @NotNull BenchData data,
+      int howMany,
+      int nparams) {
+    final HMSClient client = data.getClient();
+    String dbName = data.dbName;
+    String tableName = data.tableName;
+
+    // Create many parameters
+    Map<String, String> parameters = new HashMap<>(nparams);
+    for (int i = 0; i < nparams; i++) {
+      parameters.put(PARAM_KEY + i, PARAM_VALUE + i);
+    }
+
+    DescriptiveStatistics stats = bench.measure(() -> {
+      // Measuring 2 alter partitions, so the tests are idempotent
+        try {
+          createPartitionedTable(client, dbName, tableName);
+          addManyPartitions(client, dbName, tableName, parameters, Collections.singletonList("d"), howMany);
+          List<Partition> oldPartitions = client.getPartitions(dbName, tableName);
+          List<Partition> newPartitions = new ArrayList<>();
+          for (Partition partition : oldPartitions) {
+            Partition newPartition = partition.deepCopy();
+            StorageDescriptor sd = partition.getSd();
+            sd.setLocation(partition.getSd().getLocation() + "/newLocation");
+            newPartition.setSd(sd);
+            newPartitions.add(newPartition);
+          }
+          client.alterPartitions(dbName, tableName, newPartitions);
+          client.alterPartitions(dbName, tableName, oldPartitions);
+          client.dropTable(dbName, tableName);
+        } catch (TException e) {
+          e.printStackTrace();
+        }
+      });
+    return stats;
+
+  }
+  static DescriptiveStatistics benchmarkAlterPartitions(@NotNull MicroBenchmark bench,
+      @NotNull BenchData data,
+      int howMany,
+      int nparams) {
+    final HMSClient client = data.getClient();
+    String dbName = data.dbName;
+    String tableName = data.tableName;
+    List<Partition> newPartitions = new ArrayList<>();
+    List<Partition> oldPartitions;
+    // Create many parameters
+    Map<String, String> parameters = new HashMap<>(nparams);
+    for (int i = 0; i < nparams; i++) {
+      parameters.put(PARAM_KEY + i, PARAM_VALUE + i);
+    }
+    createPartitionedTable(client, dbName, tableName);
+    try {
+      addManyPartitions(client, dbName, tableName, parameters,
+          Collections.singletonList("d"), howMany);
+      oldPartitions = client.getPartitions(dbName, tableName);
+
+      for(Partition partition : oldPartitions) {
+        Partition newPartition = partition.deepCopy();
+        StorageDescriptor sd = partition.getSd();
+        sd.setLocation(partition.getSd().getLocation()+"/newLocation");
+        newPartition.setSd(sd);
+        newPartitions.add(newPartition);
+      }
+
+      DescriptiveStatistics stats = bench.measure(() -> {
+        // Measuring 2 alter partitions, so the tests are idempotent
+          try {
+            client.alterPartitions(dbName, tableName, newPartitions);
+            client.alterPartitions(dbName, tableName, oldPartitions);
+          } catch (TException e) {
+            e.printStackTrace();
+          }
+        });
+      client.dropTable(dbName, tableName);
+      return stats;
+    } catch (TException e) {
+      e.printStackTrace();
+    }
+    return new DescriptiveStatistics();
   }
 
   static DescriptiveStatistics benchmarkDropPartition(@NotNull MicroBenchmark bench,
