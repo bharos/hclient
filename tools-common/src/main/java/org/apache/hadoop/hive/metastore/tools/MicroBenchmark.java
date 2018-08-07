@@ -40,7 +40,7 @@ public class MicroBenchmark {
   // Specify defaults
   private static final int WARMUP_DEFAULT = 15;
   private static final int ITERATIONS_DEFAULT = 100;
-  private static final int SCALE_DEFAULT = 1;
+  private static final int SCALE_DEFAULT = 1000000;
   
   private final int warmup;
   private final int iterations;
@@ -114,6 +114,48 @@ public class MicroBenchmark {
       }
     }
     return stats;
+  }
+
+  /**
+   * Use this method for running measure with concurrent threads
+   * and add statistics per thread. This method accepts the DescriptiveStats
+   * to which the current run time should be added.
+   * @param pre Optional pre-test setup
+   * @param test Mandatory test
+   * @param post Optional post-test cleanup
+   * @return Statistics describing the results. All times are in nanoseconds.
+   */
+  public void measureConcurrent(@Nullable Runnable pre,
+      @NotNull Runnable test,
+      @Nullable Runnable post, DescriptiveStatistics stats) {
+    // Warmup phase
+    for (int i = 0; i < warmup; i++) {
+      LOG.info("Warmup phase : Iteration "+i);
+      if (pre != null) {
+        pre.run();
+      }
+      test.run();
+      if (post != null) {
+        post.run();
+      }
+    }
+    // Run the benchmark
+    for (int i = 0; i < iterations; i++) {
+      LOG.info("Benchmark phase : Iteration "+i);
+      if (pre != null) {
+        pre.run();
+      }
+      long start = System.nanoTime();
+      test.run();
+      long end = System.nanoTime();
+
+      synchronized (this) {
+        stats.addValue((double) (end - start) / scaleFactor);
+      }
+      if (post != null) {
+        post.run();
+      }
+    }
   }
 
   /**

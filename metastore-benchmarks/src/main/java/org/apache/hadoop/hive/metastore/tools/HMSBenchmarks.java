@@ -283,10 +283,71 @@ final class HMSBenchmarks {
     return stats;
 
   }
-  static DescriptiveStatistics benchmarkAlterPartitions(@NotNull MicroBenchmark bench,
-      @NotNull BenchData data,
-      int howMany,
-      int nparams) {
+
+  static DescriptiveStatistics benchmarkConcurrentCAAD(@NotNull MicroBenchmark bench, @NotNull BenchData data,
+      int howMany, int nparams, int nThreads) {
+
+    final HMSClient client = data.getClient();
+    DescriptiveStatistics stats = new DescriptiveStatistics();
+    String dbName = data.dbName;
+    String tableName = data.tableName;
+
+    ExecutorService executor = newFixedThreadPool(nThreads);
+    try {
+      List<Future<Boolean>> results = new ArrayList<>();
+      for (int i = 0; i < nThreads; i++) {
+        final int j = i;
+        LOG.info("Execute thread "+j);
+        //cloning the client
+        results.add(
+            executor.submit(() -> executeCAAD(bench, client.Clone(), dbName, tableName, nparams, howMany, j, stats)));
+      }
+      // Wait for results
+      results.forEach(r -> throwingSupplierWrapper(r::get));
+    } finally {
+      executor.shutdownNow();
+    }
+
+    return stats;
+  }
+
+  private static boolean executeCAAD(@NotNull MicroBenchmark bench, HMSClient client, String dbName,
+      String tableName, int nparams, int howMany, int instance, DescriptiveStatistics stats) {
+    String tableNameForCurThread = tableName + "_" + instance;
+    LOG.info("TableName : "+tableNameForCurThread);
+
+    // Create many parameters
+    Map<String, String> parameters = new HashMap<>(nparams);
+    for (int i = 0; i < nparams; i++) {
+      parameters.put(PARAM_KEY + i, PARAM_VALUE + i);
+    }
+    bench.measureConcurrent(null, () -> {
+      // Measuring 2 alter partitions, so the tests are idempotent
+        try {
+          createPartitionedTable(client, dbName, tableNameForCurThread);
+          addManyPartitions(client, dbName, tableNameForCurThread, parameters, Collections.singletonList("d"), howMany);
+          List<Partition> oldPartitions = client.getPartitions(dbName, tableNameForCurThread);
+          List<Partition> newPartitions = new ArrayList<>();
+          for (Partition partition : oldPartitions) {
+            Partition newPartition = partition.deepCopy();
+            StorageDescriptor sd = partition.getSd();
+            sd.setLocation(partition.getSd().getLocation() + "/newLocation");
+            newPartition.setSd(sd);
+            newPartitions.add(newPartition);
+          }
+          client.alterPartitions(dbName, tableNameForCurThread, newPartitions);
+          client.alterPartitions(dbName, tableNameForCurThread, oldPartitions);
+          client.dropTable(dbName, tableNameForCurThread);
+        } catch (TException e) {
+          e.printStackTrace();
+        }
+      }, null, stats);
+    return true;
+
+  }
+
+  static DescriptiveStatistics benchmarkAlterPartitions(@NotNull MicroBenchmark bench, @NotNull BenchData data,
+      int howMany, int nparams) {
     final HMSClient client = data.getClient();
     String dbName = data.dbName;
     String tableName = data.tableName;
@@ -546,6 +607,7 @@ final class HMSBenchmarks {
     return benchmark.measure(() ->
         throwingSupplierWrapper(client::getCurrentNotificationId));
   }
+
 
   private static void executeAddPartitions(HMSClient client, ExecutorService executor,
                                            Table tbl,
