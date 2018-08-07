@@ -291,61 +291,65 @@ final class HMSBenchmarks {
     String dbName = data.dbName;
     String tableName = data.tableName;
     Long startNotificationId = 0L;
-    Long endNotificationId= 0L;
+    Long endNotificationId = 0L;
+    DescriptiveStatistics stats = new DescriptiveStatistics();
+
     try {
       startNotificationId = client.getCurrentNotificationId();
     } catch (TException e) {
-      e.printStackTrace();
+      LOG.error("Could not fetch start notification ID.. Exiting..");
+      return stats;
     }
     ExecutorService executor = newFixedThreadPool(nThreads);
     // Create many parameters
-    Map<String, String> parameters = new HashMap<>(nparams);
-    for (int i = 0; i < nparams; i++) {
-      parameters.put(PARAM_KEY + i, PARAM_VALUE + i);
-    }
-    DescriptiveStatistics stats =  bench.measure(() -> executeCAAD(client, executor, dbName, tableName,
-        howMany, parameters, nThreads));
 
     try {
-      endNotificationId = client.getCurrentNotificationId();
-    } catch (TException e) {
-      e.printStackTrace();
-    }
-    int numNotifications = (int)(endNotificationId-startNotificationId);
-    double totalTime = stats.getSum();
-    LOG.info("Number of notifications generated : "+numNotifications);
-    LOG.info("Total time : "+totalTime);
-    double eventsPerUnitTime = numNotifications/totalTime;
-    LOG.info("Events per unit time : "+eventsPerUnitTime);
+      stats = bench.measure(() -> executeCAAD(client, executor, dbName, tableName, howMany, nparams, nThreads));
 
-    return stats;
-  }
-
-  private static void executeCAAD(HMSClient client, ExecutorService executor, String dbName,
-      String tableName, int howMany, Map<String, String> parameters, int nThreads) {
-    try {
-      List<Future<Boolean>> results = new ArrayList<>();
-      for (int i = 0; i < nThreads; i++) {
-        final int j = i;
-        LOG.info("Execute thread "+j);
-        String tableNameForCurThread = tableName + "_" + j;
-        LOG.info("TableName : "+tableNameForCurThread);
-        //cloning the client
-        results.add(
-            executor.submit(() -> caad(client.Clone(), dbName, tableNameForCurThread, parameters, howMany)));
+      try {
+        endNotificationId = client.getCurrentNotificationId();
+      } catch (TException e) {
+        LOG.error("Could not fetch end notification ID.. Exiting..");
+        return stats;
       }
-      // Wait for results
-      results.forEach(r -> throwingSupplierWrapper(r::get));
+      long numNotifications = endNotificationId - startNotificationId;
+      //SCALE_DEFAULT = 1000000 # get time in seconds
+      double totalTime = stats.getSum();
+      LOG.info("Number of notifications generated : " + numNotifications);
+      LOG.info("Total time : " + totalTime);
+      double eventsPerUnitTime = numNotifications / totalTime;
+      LOG.info("Events per unit time : " + eventsPerUnitTime);
     } finally {
       executor.shutdownNow();
     }
+    return stats;
+  }
+
+  private static void executeCAAD(HMSClient client, ExecutorService executor, String dbName, String tableName,
+      int howMany, int nparams, int nThreads) {
+
+    List<Future<Boolean>> results = new ArrayList<>();
+    for (int i = 0; i < nThreads; i++) {
+      final int j = i;
+      LOG.info("Execute thread " + j);
+      String tableNameForCurThread = tableName + "_" + j;
+      LOG.info("TableName : " + tableNameForCurThread);
+      //cloning the client
+      results.add(executor.submit(() -> caad(client.Clone(), dbName, tableNameForCurThread, nparams, howMany)));
+    }
+    // Wait for results
+    results.forEach(r -> throwingSupplierWrapper(r::get));
 
   }
 
   private static boolean caad(HMSClient client, String dbName,
-      String tableName, Map<String, String> parameters, int howMany) {
+      String tableName, int nparams, int howMany) {
     try {
       createPartitionedTable(client, dbName, tableName);
+      Map<String, String> parameters = new HashMap<>(nparams);
+      for (int i = 0; i < nparams; i++) {
+        parameters.put(PARAM_KEY + i, PARAM_VALUE + i);
+      }
       addManyPartitions(client, dbName, tableName, parameters, Collections.singletonList("d"), howMany);
       List<Partition> oldPartitions = client.getPartitions(dbName, tableName);
       List<Partition> newPartitions = new ArrayList<>();
