@@ -313,12 +313,12 @@ final class HMSBenchmarks {
         return stats;
       }
       long numNotifications = endNotificationId - startNotificationId;
-      //SCALE_DEFAULT = 1000000 # get time in seconds
-      double totalTime = stats.getSum();
+      //scale = 1000000 # get time in milli seconds
+      double totalTime = stats.getSum()/1000000;
       LOG.info("Number of notifications generated : " + numNotifications);
       LOG.info("Total time : " + totalTime);
       double eventsPerUnitTime = numNotifications / totalTime;
-      LOG.info("Events per unit time : " + eventsPerUnitTime);
+      LOG.info("Events per second : " + eventsPerUnitTime*1000);
     } finally {
       executor.shutdownNow();
     }
@@ -355,13 +355,17 @@ final class HMSBenchmarks {
       List<Partition> newPartitions = new ArrayList<>();
       for (Partition partition : oldPartitions) {
         Partition newPartition = partition.deepCopy();
-        StorageDescriptor sd = partition.getSd();
-        sd.setLocation(partition.getSd().getLocation() + "/newLocation");
+        StorageDescriptor sd = partition.getSd().deepCopy();
+        sd.setLocation(sd.getLocation() + "/newLocation");
         newPartition.setSd(sd);
         newPartitions.add(newPartition);
       }
       client.alterPartitions(dbName, tableName, newPartitions);
-      client.alterPartitions(dbName, tableName, oldPartitions);
+
+
+      for (Partition partition : oldPartitions) {
+        client.alterPartition(dbName, tableName, partition);
+      }
       client.dropTable(dbName, tableName);
     } catch (TException e) {
       e.printStackTrace();
@@ -389,8 +393,8 @@ final class HMSBenchmarks {
 
       for(Partition partition : oldPartitions) {
         Partition newPartition = partition.deepCopy();
-        StorageDescriptor sd = partition.getSd();
-        sd.setLocation(partition.getSd().getLocation()+"/newLocation");
+        StorageDescriptor sd = partition.getSd().deepCopy();
+        sd.setLocation(sd.getLocation()+"/newLocation");
         newPartition.setSd(sd);
         newPartitions.add(newPartition);
       }
@@ -399,7 +403,12 @@ final class HMSBenchmarks {
         // Measuring 2 alter partitions, so the tests are idempotent
           try {
             client.alterPartitions(dbName, tableName, newPartitions);
-            client.alterPartitions(dbName, tableName, oldPartitions);
+            List<Partition> partitions = client.getPartitions(dbName, tableName);
+            for(Partition p : partitions) {
+              p.getSd().setLocation(p.getSd().getLocation()+"/newLocation2");
+              client.alterPartition(dbName, tableName, p);
+            }
+
           } catch (TException e) {
             e.printStackTrace();
           }

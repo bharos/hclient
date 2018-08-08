@@ -40,7 +40,7 @@ public class MicroBenchmark {
   // Specify defaults
   private static final int WARMUP_DEFAULT = 15;
   private static final int ITERATIONS_DEFAULT = 100;
-  private static final int SCALE_DEFAULT = 1000000;
+  private static final int SCALE_DEFAULT = 1;
   
   private final int warmup;
   private final int iterations;
