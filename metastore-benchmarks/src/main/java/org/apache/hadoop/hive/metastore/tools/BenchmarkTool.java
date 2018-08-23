@@ -168,6 +168,8 @@ public class BenchmarkTool implements Runnable {
         .add("alterPartitions", () -> benchmarkAlterPartitions(bench, bData, 1, nParameters))
         .add("caad", () -> benchmarkCAAD(bench, bData, 1, nParameters))
         .add("concurrentCAAD", () -> benchmarkConcurrentCAAD(bench, bData, 1, nParameters, nThreads))
+        .add("concurrentAlterPartitions",
+            () -> benchmarkConcurrentAlterPartitions(bench, bData, 1, nParameters, nThreads))
         .add("dropPartition", () -> benchmarkDropPartition(bench, bData))
         .add("listPartition", () -> benchmarkListPartition(bench, bData))
         .add("getPartition",
@@ -192,6 +194,8 @@ public class BenchmarkTool implements Runnable {
               () -> benchmarkCAAD(bench, bData, howMany, nParameters))
           .add("concurrentCAAD" + '.' + howMany,
               () -> benchmarkConcurrentCAAD(bench, bData, howMany, nParameters, nThreads))
+          .add("concurrentAlterPartitions" + '.' + howMany,
+              () -> benchmarkConcurrentAlterPartitions(bench, bData, howMany, nParameters, nThreads))
           .add("listPartitions" + '.' + howMany,
               () -> benchmarkListManyPartitions(bench, bData, howMany))
           .add("getPartitions" + '.' + howMany,

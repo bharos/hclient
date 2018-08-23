@@ -373,6 +373,116 @@ final class HMSBenchmarks {
     return true;
   }
 
+
+
+  static DescriptiveStatistics benchmarkConcurrentAlterPartitions(@NotNull MicroBenchmark bench, @NotNull BenchData data,
+      int howMany, int nparams, int nThreads) {
+
+    final HMSClient client = data.getClient();
+    String dbName = data.dbName;
+    String tableName = data.tableName;
+    Long startNotificationId = 0L;
+    Long endNotificationId = 0L;
+    DescriptiveStatistics stats = new DescriptiveStatistics();
+
+    try {
+      startNotificationId = client.getCurrentNotificationId();
+    } catch (TException e) {
+      LOG.error("Could not fetch start notification ID.. Exiting..");
+      return stats;
+    }
+    ExecutorService executor = newFixedThreadPool(nThreads);
+    // Create many parameters
+
+    try {
+      Map<String, String> parameters = new HashMap<>(nparams);
+      for (int k = 0; k < nparams; k++) {
+        parameters.put(PARAM_KEY + k, PARAM_VALUE + k);
+      }
+      for (int i = 0; i < nThreads; i++) {
+        final int j = i;
+        String tableNameForCurThread = tableName + "_" + j;
+        createPartitionedTable(client, dbName, tableNameForCurThread);
+
+
+        addManyPartitions(client, dbName, tableNameForCurThread, parameters, Collections.singletonList("d"), howMany);
+      }
+      stats =
+          bench.measure(() -> executeAlterPartitions(client, executor, dbName, tableName, nThreads));
+
+      try {
+        for (int i = 0; i < nThreads; i++) {
+          final int j = i;
+          String tableNameForCurThread = tableName + "_" + j;
+          client.dropTable(dbName, tableNameForCurThread);
+        }
+        endNotificationId = client.getCurrentNotificationId();
+      } catch (TException e) {
+        LOG.error("Could not fetch end notification ID.. Exiting..");
+        return stats;
+      }
+      long numNotifications = endNotificationId - startNotificationId;
+      //scale = 1000000 # get time in milli seconds
+      double totalTime = stats.getSum()/1000000;
+      LOG.info("Number of notifications generated : " + numNotifications);
+      LOG.info("Total time : " + totalTime);
+      double eventsPerUnitTime = numNotifications / totalTime;
+      LOG.info("Events per second : " + eventsPerUnitTime*1000);
+    } catch (TException e) {
+      e.printStackTrace();
+    } finally {
+      executor.shutdownNow();
+    }
+    return stats;
+  }
+
+  private static void executeAlterPartitions(HMSClient client, ExecutorService executor, String dbName,
+      String tableName, int nThreads) {
+
+    List<Future<Boolean>> results = new ArrayList<>();
+    for (int i = 0; i < nThreads; i++) {
+      final int j = i;
+      LOG.info("Execute thread " + j);
+      String tableNameForCurThread = tableName + "_" + j;
+      LOG.info("TableName : " + tableNameForCurThread);
+      //cloning the client
+      results
+          .add(executor.submit(() -> alterPartitions(client.Clone(), dbName, tableNameForCurThread)));
+    }
+    // Wait for results
+    results.forEach(r -> throwingSupplierWrapper(r::get));
+
+  }
+
+  private static boolean alterPartitions(HMSClient client, String dbName,
+      String tableName) {
+    try {
+
+      List<Partition> oldPartitions = client.getPartitions(dbName, tableName);
+      List<Partition> newPartitions = new ArrayList<>();
+      for (Partition partition : oldPartitions) {
+        Partition newPartition = partition.deepCopy();
+        StorageDescriptor sd = partition.getSd().deepCopy();
+        sd.setLocation(sd.getLocation() + "/newLocation");
+        newPartition.setSd(sd);
+        newPartitions.add(newPartition);
+      }
+
+      for(int i=0; i<100; i++) {
+        for (Partition newPartition : newPartitions) {
+          client.alterPartition(dbName, tableName, newPartition);
+        }
+
+        for (Partition partition : oldPartitions) {
+          client.alterPartition(dbName, tableName, partition);
+        }
+      }
+    } catch (TException e) {
+      e.printStackTrace();
+    }
+    return true;
+  }
+
   static DescriptiveStatistics benchmarkAlterPartitions(@NotNull MicroBenchmark bench, @NotNull BenchData data,
       int howMany, int nparams) {
     final HMSClient client = data.getClient();
